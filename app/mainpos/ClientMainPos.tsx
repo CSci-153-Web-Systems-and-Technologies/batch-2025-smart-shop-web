@@ -227,7 +227,16 @@ export default function ClientMainPos() {
             <div>Total:</div>
             <div className="total-amount">₱{total().toFixed(2)}</div>
           </div>
-          <button className="pay-btn" onClick={() => router.push("/payment")}>
+          <button
+            className="pay-btn"
+            onClick={() => router.push("/payment")}
+            disabled={cart.length === 0}
+            title={
+              cart.length === 0
+                ? "Add items to cart first"
+                : "Proceed to payment"
+            }
+          >
             Proceed to Payment
           </button>
         </div>

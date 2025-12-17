@@ -39,9 +39,6 @@ export default function MainPosLayout({
           <Link className="header-btn" href="/inventory">
             Inventory
           </Link>
-          <a className="header-btn" href="/payment">
-            Payment
-          </a>
         </div>
       </header>
 
