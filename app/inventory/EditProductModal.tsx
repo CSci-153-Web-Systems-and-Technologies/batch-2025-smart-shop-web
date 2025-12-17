@@ -78,7 +78,6 @@ export function EditProductModal({
               <option>Groceries</option>
               <option>Beverages</option>
               <option>Snacks</option>
-              <option>Dairy</option>
             </select>
           </div>
 

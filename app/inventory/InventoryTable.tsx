@@ -1,12 +1,11 @@
 "use client";
 import React, { useMemo, useState } from "react";
-import { Package, Wine, Cake, ShoppingBasket } from "lucide-react";
+import { Package, Wine, Cookie, ShoppingBasket } from "lucide-react";
 
 const categoryIcons: Record<string, React.ReactNode> = {
   Groceries: <ShoppingBasket size={20} color="white" strokeWidth={1.5} />,
   Beverages: <Wine size={20} color="white" strokeWidth={1.5} />,
-  Snacks: <Cake size={20} color="white" strokeWidth={1.5} />,
-  Dairy: <Package size={20} color="white" strokeWidth={1.5} />,
+  Snacks: <Cookie size={20} color="white" strokeWidth={1.5} />,
 };
 
 type Product = {

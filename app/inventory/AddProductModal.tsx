@@ -73,7 +73,6 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
               <option>Groceries</option>
               <option>Beverages</option>
               <option>Snacks</option>
-              <option>Dairy</option>
             </select>
           </div>
 
