@@ -1,19 +1,46 @@
 "use client";
 import React, { useState } from "react";
 import Link from "next/link";
+import { login, signInWithGoogle } from "@/lib/auth-action";
 
 export default function Home() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    console.log("Demo submit", { username, password });
-    alert("Demo: form submitted — no backend configured.");
+    setError("");
+    setLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("email", email);
+      formData.append("password", password);
+
+      const result = await login(formData);
+
+      if (result?.error) {
+        setError(result.error);
+        setLoading(false);
+      }
+      // If successful, server action will redirect to /mainpos
+    } catch (err) {
+      setError("An error occurred. Please try again.");
+      console.error(err);
+      setLoading(false);
+    }
   }
 
-  function handleGmail() {
-    alert("Gmail sign-in placeholder (no backend configured).");
+  async function handleGmail() {
+    try {
+      setError("");
+      await signInWithGoogle();
+    } catch (err) {
+      setError("Failed to sign in with Google");
+      console.error(err);
+    }
   }
 
   return (
@@ -28,6 +55,7 @@ export default function Home() {
               className="gmail-btn"
               onClick={handleGmail}
               aria-label="Sign in with Gmail"
+              type="button"
             >
               <span className="gmail-mark" aria-hidden>
                 ✉️
@@ -40,14 +68,18 @@ export default function Home() {
             <h2 className="login-title">Login</h2>
 
             <form className="login-form" onSubmit={handleSubmit}>
+              {error && <div className="error-message">{error}</div>}
+
               <label className="input-wrap">
-                <span className="visually-hidden">Username</span>
+                <span className="visually-hidden">Email</span>
                 <input
                   className="text-input"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Username"
-                  aria-label="Username"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  aria-label="Email"
+                  required
                 />
               </label>
 
@@ -60,11 +92,12 @@ export default function Home() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Password"
                   aria-label="Password"
+                  required
                 />
               </label>
 
-              <button className="login-btn" type="submit">
-                Log in
+              <button className="login-btn" type="submit" disabled={loading}>
+                {loading ? "Logging in..." : "Log in"}
               </button>
 
               <div className="small-links">

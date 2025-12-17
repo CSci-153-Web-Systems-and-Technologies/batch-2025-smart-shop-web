@@ -13,6 +13,7 @@ import {
   Info,
   LogOut,
 } from "lucide-react";
+import { signout } from "@/lib/auth-action";
 import "./styles.css";
 
 export default function SettingsLayout({
@@ -22,18 +23,30 @@ export default function SettingsLayout({
 }) {
   const router = useRouter();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogoutClick = () => {
     setShowLogoutModal(true);
   };
 
-  const handleConfirmLogout = () => {
-    // Clear any stored user data
-    localStorage.clear();
-    sessionStorage.clear();
+  const handleConfirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      // Clear any stored user data
+      localStorage.clear();
+      sessionStorage.clear();
 
-    // Redirect to login page
-    router.push("/");
+      // Call server action to sign out
+      await signout();
+
+      // Server action will redirect to login page
+    } catch (error) {
+      console.error("Logout error:", error);
+      setIsLoggingOut(false);
+      setShowLogoutModal(false);
+      // Fallback redirect
+      router.push("/");
+    }
   };
 
   const handleCancelLogout = () => {
@@ -131,8 +144,12 @@ export default function SettingsLayout({
               >
                 Cancel
               </button>
-              <button onClick={handleConfirmLogout} className="btn btn-danger">
-                Log Out
+              <button
+                onClick={handleConfirmLogout}
+                className="btn btn-danger"
+                disabled={isLoggingOut}
+              >
+                {isLoggingOut ? "Logging out..." : "Log Out"}
               </button>
             </div>
           </div>
