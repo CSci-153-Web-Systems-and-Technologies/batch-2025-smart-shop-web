@@ -5,6 +5,7 @@ import Link from "next/link";
 
 export default function PaymentWidget() {
   const [amount, setAmount] = useState<string>("");
+  const [paymentMode, setPaymentMode] = useState<"Cash" | "GCash">("Cash");
   const router = useRouter();
 
   function addDigit(d: string) {
@@ -63,6 +64,23 @@ export default function PaymentWidget() {
           <div className="row">
             <div className="label">Change:</div>
             <div className="amount">₱0.00</div>
+          </div>
+          <div className="row payment-mode-row">
+            <div className="label">Payment Mode:</div>
+            <div className="payment-mode-buttons">
+              <button
+                className={`mode-btn ${paymentMode === "Cash" ? "active" : ""}`}
+                onClick={() => setPaymentMode("Cash")}
+              >
+                Cash
+              </button>
+              <button
+                className={`mode-btn ${paymentMode === "GCash" ? "active" : ""}`}
+                onClick={() => setPaymentMode("GCash")}
+              >
+                GCash
+              </button>
+            </div>
           </div>
         </div>
 

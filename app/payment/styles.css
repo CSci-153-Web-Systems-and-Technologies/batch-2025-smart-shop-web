@@ -22,6 +22,13 @@
 .payment-total .label { opacity:0.9; }
 .payment-total .amount { font-weight:900; font-size:20px; }
 
+.payment-mode-row { flex-direction: column; gap: 8px; margin-top: 8px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.15); }
+.payment-mode-buttons { display: flex; gap: 8px; width: 100%; }
+.mode-btn { flex: 1; padding: 10px 16px; border-radius: 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; font-weight: 700; cursor: pointer; transition: all 0.2s ease; }
+.mode-btn:hover { background: rgba(255,255,255,0.15); transform: translateY(-1px); }
+.mode-btn.active { background: linear-gradient(90deg, var(--primary-1), var(--primary-2)); border-color: rgba(255,255,255,0.3); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+
+
  .keypad-card { background: linear-gradient(180deg, rgba(111,92,233,1), rgba(106,78,240,1)); border-radius: 28px; padding: 34px; box-shadow: 0 22px 46px rgba(0,0,0,0.36); display:grid; grid-template-columns: repeat(3, 92px); gap: 18px; align-items:center; justify-content:center; }
 
 
