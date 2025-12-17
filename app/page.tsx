@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import Link from "next/link";
 
 export default function Home() {
   const [username, setUsername] = useState("");
@@ -69,7 +70,10 @@ export default function Home() {
               <div className="small-links">
                 <a className="muted">Forgot Password?</a>
                 <div className="signup">
-                  Don’t have an account? <a>Sign Up Here!</a>
+                  Don't have an account?{" "}
+                  <Link href="/signup" className="signup-link">
+                    Sign Up Here!
+                  </Link>
                 </div>
               </div>
             </form>

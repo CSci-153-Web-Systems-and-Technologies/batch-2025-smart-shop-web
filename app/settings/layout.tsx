@@ -1,5 +1,8 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Store,
   Receipt,
@@ -8,6 +11,7 @@ import {
   Users,
   Bell,
   Info,
+  LogOut,
 } from "lucide-react";
 import "./styles.css";
 
@@ -16,6 +20,26 @@ export default function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true);
+  };
+
+  const handleConfirmLogout = () => {
+    // Clear any stored user data
+    localStorage.clear();
+    sessionStorage.clear();
+
+    // Redirect to login page
+    router.push("/");
+  };
+
+  const handleCancelLogout = () => {
+    setShowLogoutModal(false);
+  };
+
   return (
     <div className="settings-container">
       <div className="settings-header">
@@ -72,11 +96,48 @@ export default function SettingsLayout({
                 About & Updates
               </Link>
             </div>
+
+            <div className="nav-section nav-section-logout">
+              <button
+                onClick={handleLogoutClick}
+                className="nav-item nav-item-logout"
+              >
+                <LogOut className="nav-icon" size={20} />
+                Log Out
+              </button>
+            </div>
           </nav>
         </aside>
 
         <main className="settings-content">{children}</main>
       </div>
+
+      {showLogoutModal && (
+        <div className="modal-overlay" onClick={handleCancelLogout}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Confirm Logout</h3>
+            </div>
+            <div className="modal-body">
+              <p>
+                Are you sure you want to log out? You will be redirected to the
+                login page.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                onClick={handleCancelLogout}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button onClick={handleConfirmLogout} className="btn btn-danger">
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
