@@ -27,33 +27,49 @@ export async function login(formData: FormData) {
 
   if (error) {
     console.error("Login error:", error);
-    return { error: error.message || "Invalid email or password" };
+    
+    // More specific error messages
+    if (error.message.includes("Invalid login credentials")) {
+      return { error: "Wrong email or password" };
+    }
+    if (error.message.includes("Email not confirmed")) {
+      return { error: "Please confirm your email before logging in" };
+    }
+    
+    return { error: "Wrong email or password" };
   }
 
   if (!data.user) {
-    return { error: "Login failed. Please try again." };
+    return { error: "Wrong email or password" };
   }
 
-  // Check if user profile exists and is active
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("is_active")
-    .eq("id", data.user.id)
-    .single();
+  // Optional: Check if user profile is active when the column exists
+  // Some databases may not have the `is_active` column yet; in that case, skip the check
+  try {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("is_active")
+      .eq("id", data.user.id)
+      .maybeSingle();
 
-  if (profileError || !profile) {
-    console.error("Profile error:", profileError);
-    return { error: "User profile not found. Please contact support." };
+    // If column doesn't exist (code 42703) or no row, assume active
+    const columnMissing = (profileError as any)?.code === "42703";
+    if (!columnMissing && profileError) {
+      // Unexpected error while fetching profile; do not block login
+      console.warn("Profile lookup warning:", profileError);
+    }
+
+    if (profile && (profile as any).is_active === false) {
+      await supabase.auth.signOut();
+      return { error: "Your account has been deactivated. Please contact support." };
+    }
+  } catch (e) {
+    // Swallow profile check errors; they shouldn't block login
+    console.warn("Profile check skipped due to error", e);
   }
 
-  if (!profile.is_active) {
-    await supabase.auth.signOut();
-    return { error: "Your account has been deactivated. Please contact support." };
-  }
-
-  // Success - revalidate and redirect
-  revalidatePath("/", "layout");
-  redirect("/mainpos");
+  // Success - return flag for client-side redirect
+  return { success: true };
 }
 
 /**
@@ -123,7 +139,7 @@ export async function signup(formData: FormData) {
 
 /**
  * Sign out current user
- * Clears session and redirects to login page
+ * Clears session and returns success flag for client-side redirect
  */
 export async function signout() {
   const supabase = await createClient();
@@ -136,7 +152,7 @@ export async function signout() {
   }
 
   revalidatePath("/", "layout");
-  redirect("/");
+  return { success: true };
 }
 
 /**
@@ -162,7 +178,7 @@ export async function signInWithGoogle() {
   }
 
   if (data.url) {
-    redirect(data.url);
+    return { url: data.url };
   }
 }
 

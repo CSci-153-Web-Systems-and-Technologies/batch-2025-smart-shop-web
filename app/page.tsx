@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { login, signInWithGoogle } from "@/lib/auth-action";
 
 export default function Home() {
@@ -8,6 +9,7 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,8 +27,10 @@ export default function Home() {
         setError(result.error);
         setLoading(false);
       }
-      // If successful, server action will redirect to /mainpos
-    } catch (err) {
+      if (result?.success) {
+        router.push("/mainpos");
+      }
+    } catch (err: any) {
       setError("An error occurred. Please try again.");
       console.error(err);
       setLoading(false);
@@ -36,7 +40,14 @@ export default function Home() {
   async function handleGmail() {
     try {
       setError("");
-      await signInWithGoogle();
+      const result = await signInWithGoogle();
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      if (result?.url) {
+        window.location.href = result.url;
+      }
     } catch (err) {
       setError("Failed to sign in with Google");
       console.error(err);

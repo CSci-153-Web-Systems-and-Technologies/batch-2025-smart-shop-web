@@ -37,9 +37,19 @@ export default function SettingsLayout({
       sessionStorage.clear();
 
       // Call server action to sign out
-      await signout();
+      const result = await signout();
 
-      // Server action will redirect to login page
+      if (result?.error) {
+        console.error("Logout error:", result.error);
+        setIsLoggingOut(false);
+        setShowLogoutModal(false);
+        return;
+      }
+
+      if (result?.success) {
+        // Redirect to login page on client side
+        router.push("/");
+      }
     } catch (error) {
       console.error("Logout error:", error);
       setIsLoggingOut(false);
