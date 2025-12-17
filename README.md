@@ -1,0 +1,1 @@
+# batch-2025-smart-shop-web
