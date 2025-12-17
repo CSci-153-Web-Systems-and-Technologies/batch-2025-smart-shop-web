@@ -1,9 +1,29 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
 @import "tailwindcss";
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
+  --primary-1: #6f5ce9;
+  --primary-2: #6a4ef0;
+  --card-bg: rgba(0,0,0,0.04);
+  --muted: rgba(0,0,0,0.6);
+  --header-ink: #171717;
+  
+  /* Chart colors */
+  --chart-1: 217 91% 60%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+  
+  /* Shadcn colors */
+  --border: 214.3 31.8% 91.4%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+} 
 
 @theme inline {
   --color-background: var(--background);
@@ -16,11 +36,210 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --primary-1: #6f5ce9;
+    --primary-2: #6a4ef0;
+    --card-bg: rgba(255,255,255,0.02);
+    --muted: rgba(255,255,255,0.6);
   }
+}
+
+/* Theme classes that take precedence over prefers-color-scheme */
+html.theme-light {
+  --background: #ffffff;
+  --foreground: #171717;
+  --primary-1: #6f5ce9;
+  --primary-2: #6a4ef0;
+  --card-bg: rgba(0,0,0,0.04);
+  --muted: rgba(0,0,0,0.6);
+  --header-ink: #171717;
+  
+  /* Chart colors */
+  --chart-1: 217 91% 60%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+  
+  /* Shadcn colors */
+  --border: 214.3 31.8% 91.4%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+} 
+
+html.theme-dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --primary-1: #6f5ce9;
+  --primary-2: #6a4ef0;
+  --card-bg: rgba(255,255,255,0.02);
+  --muted: rgba(255,255,255,0.6);
+  
+  /* Chart colors */
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+  
+  /* Shadcn colors */
+  --border: 217.2 32.6% 17.5%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --header-ink: #171717;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', 'Segoe UI', 'Poppins', 'Geist', Arial, Helvetica, sans-serif;
+  font-feature-settings: "ss01" on, "ss02" on;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Landing / Auth styles */
+:root {
+  --bg-top: #1e3c72;
+  --bg-bottom: #2a5298;
+  --panel-left: #6f5ce9;
+  --panel-right: #6a4ef0;
+  --panel-right-2: #7a58f6;
+  --cream: #fff7e6;
+  --muted: rgba(255,255,255,0.75);
+}
+
+.landing-bg {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+  padding: 48px 20px;
+}
+
+.container {
+  width: 100%;
+  max-width: 980px;
+}
+
+.auth-card {
+  display: flex;
+  background: transparent;
+  border-radius: 12px;
+  box-shadow: 0 10px 18px rgba(0,0,0,0.35);
+  overflow: hidden;
+  gap: 0;
+}
+
+.auth-card > .left,
+.auth-card > .right {
+  padding: 46px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.auth-card > .left {
+  background: linear-gradient(180deg, var(--panel-left), var(--panel-right));
+  width: 60%;
+  color: white;
+  align-items: center;
+  text-align: center;
+}
+
+.auth-card > .right {
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  width: 40%;
+  color: #fff;
+}
+
+.brand {
+  font-size: 56px;
+  margin: 0 0 8px 0;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.tagline {
+  margin: 6px 0 28px 0;
+  font-size: 18px;
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.gmail-btn { display: none !important; }
+
+.login-title { font-size: 28px; margin: 0 0 18px 0; text-align: right; }
+
+.login-form { display:flex; flex-direction:column; gap:14px; align-items: stretch; }
+
+.input-wrap { display:block; position: relative; }
+.input-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 18px; color: var(--muted); z-index: 2; }
+.input-icon svg { display: block; width: 18px; height: 18px; }
+
+/* Ensure icon is visible over the white input on the auth card right panel */
+.auth-card > .right .input-icon { color: rgba(0,0,0,0.45); }
+.text-input { position: relative; z-index: 1; }
+.text-input {
+  width:100%;
+  padding: 14px 12px 14px 44px; /* room for icon */
+  border-radius: 8px;
+  border: none;
+  background: rgba(255,255,255,0.95);
+  color: #222;
+  font-size: 15px;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.06) inset;
+}
+
+.login-btn {
+  margin-top: 6px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255,255,255,0.15);
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(74,46,255,0.18);
+}
+
+.small-links { margin-top: 10px; font-size: 13px; color: var(--muted); text-align: right; }
+.small-links a { color: rgba(255,255,255,0.95); text-decoration: underline; cursor: pointer; }
+.signup { margin-top: 10px; font-size: 13px; color: rgba(255,255,255,0.9); text-align:right }
+
+.visually-hidden { position: absolute !important; height: 1px; width: 1px; overflow: hidden; clip: rect(1px,1px,1px,1px); white-space: nowrap; }
+
+/* Theme toggle button styling */
+.theme-toggle {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,var(--primary-1),var(--primary-2));
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+}
+
+@media (max-width: 840px) {
+  .auth-card { flex-direction: column; width: 100%; }
+  .auth-card > .left, .auth-card > .right { width: 100%; padding: 28px; }
+  .brand { font-size: 44px; }
+  .login-title { text-align: left; }
+  .small-links, .signup { text-align: left; }
+}
+
+@media (max-width: 420px) {
+  .brand { font-size: 36px; }
+  .tagline { font-size: 15px; }
+  .gmail-btn { display: none !important; }
 }
