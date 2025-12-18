@@ -1,60 +1,73 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Package, Wine, Cake, ShoppingBasket } from "lucide-react";
+import { Package, Loader } from "lucide-react";
+import {
+  fetchProducts,
+  fetchCategories,
+  type Product,
+  type Category,
+} from "@/lib/pos-service";
 
 const categoryIcons: Record<string, React.ReactNode> = {
   "All items": <Package size={32} color="white" strokeWidth={1.5} />,
-  Groceries: <ShoppingBasket size={32} color="white" strokeWidth={1.5} />,
-  Beverages: <Wine size={32} color="white" strokeWidth={1.5} />,
-  Snacks: <Cake size={32} color="white" strokeWidth={1.5} />,
-};
-
-const productCategories: Record<string, string> = {
-  Bread: "Groceries",
-  "Canned Food": "Groceries",
-  "Coke Mismo": "Beverages",
-  Egg: "Groceries",
 };
 
 export default function ClientMainPos() {
-  const sampleProducts = Array.from({ length: 12 }).map((_, i) => ({
-    id: i + 1,
-    name: ["Bread", "Canned Food", "Coke Mismo", "Egg"][i % 4],
-    price: [20, 23, 25, 11][i % 4],
-  }));
-
-  // Create a canonical list of products (unique by name) using the first occurrence
-  const uniqueProducts = Array.from(
-    new Map(sampleProducts.map((p) => [p.name, p])).values()
-  );
-
-  // Compute inventory counts per product name
-  const inventoryByName = useMemo(() => {
-    return sampleProducts.reduce<Record<string, number>>(
-      (acc, p) => {
-        acc[p.name] = (acc[p.name] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>
-    );
-  }, [sampleProducts]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>("");
 
   const [query, setQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All items");
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    null
+  );
+  const [cart, setCart] = useState<
+    {
+      productId: string;
+      productName: string;
+      quantity: number;
+      price: number;
+    }[]
+  >([]);
 
+  const router = useRouter();
+
+  // Fetch products and categories on mount
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      setError("");
+      try {
+        const [productsData, categoriesData] = await Promise.all([
+          fetchProducts(),
+          fetchCategories(),
+        ]);
+
+        setProducts(productsData);
+        setCategories(categoriesData);
+      } catch (err) {
+        setError("Failed to load products. Please refresh the page.");
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
+  }, []);
+
+  // Handle search from other sources
   React.useEffect(() => {
     const handler = (e: Event) =>
       setQuery((e as CustomEvent<string>).detail ?? "");
-    // event-based update
     window.addEventListener("mainpos:search", handler as EventListener);
-    // storage-based synchronization
     const storageHandler = (e: StorageEvent) => {
       if (e.key === "mainpos:search") setQuery(e.newValue ?? "");
     };
     window.addEventListener("storage", storageHandler);
 
-    // Initialize from localStorage if any
     const v = localStorage.getItem("mainpos:search");
     if (v) setQuery(v);
 
@@ -63,53 +76,116 @@ export default function ClientMainPos() {
       window.removeEventListener("storage", storageHandler);
     };
   }, []);
-  const [cart, setCart] = useState<{ id: number; qty: number }[]>([]);
-  const router = useRouter();
 
-  function addToCart(id: number) {
-    const name = uniqueProducts.find((p) => p.id === id)?.name;
-    const stock = name ? (inventoryByName[name] ?? Infinity) : Infinity;
-    const current = cart.find((c) => c.id === id)?.qty ?? 0;
-    if (current >= stock) return; // don't add beyond stock
+  // Filter products
+  const filteredProducts = useMemo(() => {
+    const filtered = products.filter((p) => {
+      const matchesQuery = p.name.toLowerCase().includes(query.toLowerCase());
+      const matchesCategory =
+        selectedCategoryId === null || p.category_id === selectedCategoryId;
+      return matchesQuery && matchesCategory && p.stock_quantity > 0;
+    });
+
+    // Remove duplicates by ID just in case
+    const seen = new Set<string>();
+    return filtered.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [products, query, selectedCategoryId]);
+
+  function addToCart(product: Product) {
+    const inCart = cart.find((c) => c.productId === product.id);
+    if (inCart && inCart.quantity >= product.stock_quantity) {
+      return; // Can't add more than stock
+    }
+
     setCart((prev) => {
-      const found = prev.find((p) => p.id === id);
-      if (found)
-        return prev.map((p) => (p.id === id ? { ...p, qty: p.qty + 1 } : p));
-      return [...prev, { id, qty: 1 }];
+      const found = prev.find((c) => c.productId === product.id);
+      if (found) {
+        return prev.map((c) =>
+          c.productId === product.id ? { ...c, quantity: c.quantity + 1 } : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          productName: product.name,
+          quantity: 1,
+          price: product.price,
+        },
+      ];
     });
   }
 
-  function removeFromCart(id: number) {
+  function removeFromCart(productId: string) {
     setCart((prev) => {
-      const found = prev.find((p) => p.id === id);
+      const found = prev.find((c) => c.productId === productId);
       if (!found) return prev;
-      if (found.qty <= 1) return prev.filter((p) => p.id !== id);
-      return prev.map((p) => (p.id === id ? { ...p, qty: p.qty - 1 } : p));
+      if (found.quantity <= 1)
+        return prev.filter((c) => c.productId !== productId);
+      return prev.map((c) =>
+        c.productId === productId ? { ...c, quantity: c.quantity - 1 } : c
+      );
     });
   }
 
-  function removeAllFromCart(id: number) {
-    setCart((prev) => prev.filter((p) => p.id !== id));
+  function removeAllFromCart(productId: string) {
+    setCart((prev) => prev.filter((c) => c.productId !== productId));
   }
 
-  function qtyFor(id: number) {
-    return cart.find((c) => c.id === id)?.qty ?? 0;
+  function getQtyInCart(productId: string) {
+    return cart.find((c) => c.productId === productId)?.quantity ?? 0;
   }
 
-  // Filter the unique products for display
-  const products = uniqueProducts.filter((p) => {
-    const matchesQuery = p.name.toLowerCase().includes(query.toLowerCase());
-    const matchesCategory =
-      selectedCategory === "All items" ||
-      productCategories[p.name] === selectedCategory;
-    return matchesQuery && matchesCategory;
-  });
+  function calculateTotal() {
+    return cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  }
 
-  function total() {
-    return cart.reduce((sum, it) => {
-      const prod = sampleProducts.find((p) => p.id === it.id)!;
-      return sum + prod.price * it.qty;
-    }, 0);
+  // Render a compact product thumbnail: supports URL images, emojis, or fallback icon
+  function renderThumb(product: Product) {
+    const icon = product.icon;
+    const isUrl = typeof icon === "string" && /^(https?:\/\/|\/)/.test(icon);
+    const isEmoji =
+      typeof icon === "string" && /\p{Extended_Pictographic}/u.test(icon);
+
+    if (isUrl) {
+      return (
+        <img
+          src={icon}
+          alt={product.name}
+          style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 6 }}
+        />
+      );
+    }
+    if (isEmoji) {
+      return <span style={{ fontSize: 24 }}>{icon}</span>;
+    }
+    return categoryIcons["All items"];
+  }
+
+  const handleProceedToPayment = () => {
+    if (cart.length === 0) {
+      alert("Please add items to cart first");
+      return;
+    }
+    // Store cart in sessionStorage for payment page
+    sessionStorage.setItem("pos:cart", JSON.stringify(cart));
+    router.push("/payment");
+  };
+
+  if (loading) {
+    return (
+      <div
+        className="pos-page"
+        style={{ justifyContent: "center", alignItems: "center" }}
+      >
+        <Loader size={48} className="animate-spin" />
+        <p>Loading products...</p>
+      </div>
+    );
   }
 
   return (
@@ -135,42 +211,65 @@ export default function ClientMainPos() {
             />
           </div>
           <div className="category-chips">
-            {["All items", "Groceries", "Beverages", "Snacks"].map((cat) => (
+            <button
+              className={`chip ${selectedCategoryId === null ? "active" : ""}`}
+              onClick={() => setSelectedCategoryId(null)}
+            >
+              <Package size={14} />
+              <span>All Items</span>
+            </button>
+            {categories.map((cat) => (
               <button
-                key={cat}
-                className={`chip ${selectedCategory === cat ? "active" : ""}`}
-                onClick={() => setSelectedCategory(cat)}
+                key={cat.id}
+                className={`chip ${selectedCategoryId === cat.id ? "active" : ""}`}
+                onClick={() => setSelectedCategoryId(cat.id)}
               >
-                {cat}
+                {cat.name}
               </button>
             ))}
           </div>
         </div>
 
+        {error && <div className="error-banner">{error}</div>}
+
         <div className="product-grid">
-          {products.map((p) => {
-            const stock = inventoryByName[p.name] ?? 0;
-            const inCart = qtyFor(p.id);
-            const outOfStock = inCart >= stock;
-            return (
-              <div
-                key={p.id}
-                className={`product-card ${outOfStock ? "disabled" : ""}`}
-                onClick={() => !outOfStock && addToCart(p.id)}
-              >
-                <div className="product-thumb">
-                  {categoryIcons[productCategories[p.name]] ||
-                    categoryIcons["All items"]}
+          {filteredProducts.length === 0 ? (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                padding: "2rem",
+                textAlign: "center",
+                color: "#999",
+              }}
+            >
+              No products found
+            </div>
+          ) : (
+            filteredProducts.map((product) => {
+              const inCart = getQtyInCart(product.id);
+              const outOfStock = product.stock_quantity === 0;
+
+              return (
+                <div
+                  key={product.id}
+                  className={`product-card ${outOfStock ? "disabled" : ""}`}
+                  onClick={() => !outOfStock && addToCart(product)}
+                >
+                  <div className="product-thumb">{renderThumb(product)}</div>
+                  <div className="product-name">{product.name}</div>
+                  <div className="product-price">
+                    ₱{product.price.toFixed(2)}
+                  </div>
+                  <div className="product-qty">
+                    {inCart ? `In cart: ${inCart}` : ""}
+                  </div>
+                  <div className="product-stock">
+                    Stock: {product.stock_quantity}
+                  </div>
                 </div>
-                <div className="product-name">{p.name}</div>
-                <div className="product-price">₱{p.price.toFixed(2)}</div>
-                <div className="product-qty">
-                  {qtyFor(p.id) ? `In cart: ${qtyFor(p.id)}` : ""}
-                </div>
-                <div className="product-stock">Stock: {stock}</div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -190,32 +289,33 @@ export default function ClientMainPos() {
           </div>
 
           <div className="cart-list">
-            {cart.map((it) => {
-              const p = sampleProducts.find((x) => x.id === it.id)!;
+            {cart.map((item) => {
               return (
-                <div className="cart-item" key={it.id}>
+                <div className="cart-item" key={item.productId}>
                   <div className="item-left">
                     <div>
-                      {p.name} × {it.qty}
+                      {item.productName} × {item.quantity}
                     </div>
                     <button
                       className="btn-remove-one"
-                      aria-label={`Remove one ${p.name}`}
+                      aria-label={`Remove one ${item.productName}`}
                       title="Remove one"
-                      onClick={() => removeFromCart(it.id)}
+                      onClick={() => removeFromCart(item.productId)}
                     >
                       ×
                     </button>
                     <button
                       className="btn-remove-all"
-                      aria-label={`Remove all ${p.name}`}
+                      aria-label={`Remove all ${item.productName}`}
                       title="Remove all"
-                      onClick={() => removeAllFromCart(it.id)}
+                      onClick={() => removeAllFromCart(item.productId)}
                     >
                       🗑
                     </button>
                   </div>
-                  <div className="price">₱{(p.price * it.qty).toFixed(2)}</div>
+                  <div className="price">
+                    ₱{(item.price * item.quantity).toFixed(2)}
+                  </div>
                 </div>
               );
             })}
@@ -225,11 +325,11 @@ export default function ClientMainPos() {
         <div className="cart-footer">
           <div className="total-row">
             <div>Total:</div>
-            <div className="total-amount">₱{total().toFixed(2)}</div>
+            <div className="total-amount">₱{calculateTotal().toFixed(2)}</div>
           </div>
           <button
             className="pay-btn"
-            onClick={() => router.push("/payment")}
+            onClick={handleProceedToPayment}
             disabled={cart.length === 0}
             title={
               cart.length === 0
