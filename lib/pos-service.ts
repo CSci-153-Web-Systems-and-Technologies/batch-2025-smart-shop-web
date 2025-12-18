@@ -200,36 +200,29 @@ export async function createTransaction(
         return { error: "Failed to save transaction items" };
       }
 
-      // Update product stock
-      const { error: stockError } = await supabase.rpc(
-        "decrement_product_stock",
-        {
-          product_id: item.product_id,
-          quantity: item.quantity,
-        }
-      );
+      // Update product stock - fetch current stock first
+      const { data: currentProduct, error: fetchError } = await supabase
+        .from("products")
+        .select("stock_quantity")
+        .eq("id", item.product_id)
+        .single();
 
-      // If RPC function doesn't exist, use direct update
-      if (stockError?.code === "PGRST205") {
+      if (fetchError) {
+        console.error("Error fetching product stock:", fetchError);
+        continue; // Continue with other items even if one fails
+      }
+
+      if (currentProduct) {
+        const newStock = Math.max(0, currentProduct.stock_quantity - item.quantity);
         const { error: updateError } = await supabase
           .from("products")
-          .select("stock_quantity")
-          .eq("id", item.product_id)
-          .single()
-          .then(async ({ data }) => {
-            if (data) {
-              return await supabase
-                .from("products")
-                .update({
-                  stock_quantity: Math.max(0, data.stock_quantity - item.quantity),
-                })
-                .eq("id", item.product_id);
-            }
-            return { error: null };
-          });
+          .update({ stock_quantity: newStock })
+          .eq("id", item.product_id);
 
         if (updateError) {
           console.error("Error updating stock:", updateError);
+        } else {
+          console.log(`Updated stock for product ${item.product_id}: ${currentProduct.stock_quantity} -> ${newStock}`);
         }
       }
     }

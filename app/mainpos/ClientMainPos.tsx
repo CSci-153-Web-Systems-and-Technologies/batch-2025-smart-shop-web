@@ -218,15 +218,17 @@ export default function ClientMainPos() {
               <Package size={14} />
               <span>All Items</span>
             </button>
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                className={`chip ${selectedCategoryId === cat.id ? "active" : ""}`}
-                onClick={() => setSelectedCategoryId(cat.id)}
-              >
-                {cat.name}
-              </button>
-            ))}
+            {categories
+              .filter((cat) => cat.name !== "All Items")
+              .map((cat) => (
+                <button
+                  key={cat.id}
+                  className={`chip ${selectedCategoryId === cat.id ? "active" : ""}`}
+                  onClick={() => setSelectedCategoryId(cat.id)}
+                >
+                  {cat.name}
+                </button>
+              ))}
           </div>
         </div>
 
