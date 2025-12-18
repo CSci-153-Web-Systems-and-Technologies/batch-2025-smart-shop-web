@@ -184,10 +184,7 @@ export async function createTransaction(
     // Generate unique receipt number
     const receiptNumber = `RCP-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    // Create transaction with Philippine timezone
-    const now = new Date();
-    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
-    
+    // Create transaction (Supabase will store in UTC automatically)
     const { data: transaction, error: transactionError } = await supabase
       .from("transactions")
       .insert({
@@ -199,7 +196,6 @@ export async function createTransaction(
         status: "completed",
         cashier_name: cashierName,
         receipt_number: receiptNumber,
-        created_at: phTime.toISOString(),
       })
       .select()
       .single();

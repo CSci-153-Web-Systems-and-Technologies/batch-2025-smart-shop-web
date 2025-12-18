@@ -12,11 +12,18 @@ import TransactionDetailsModal from "./components/TransactionDetailsModal";
 import { createClient } from "@/utils/supabase/client";
 
 function formatDateTime(isoDate: string) {
+  // Manually convert UTC to Philippine Time (UTC+8)
+  const utcDate = new Date(isoDate);
+  const phTime = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+
   return new Intl.DateTimeFormat("en-PH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Manila",
-  }).format(new Date(isoDate));
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(phTime);
 }
 
 export default function TransactionHistoryPage() {

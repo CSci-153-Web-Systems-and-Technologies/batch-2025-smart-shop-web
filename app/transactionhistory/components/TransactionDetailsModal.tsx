@@ -60,9 +60,20 @@ export default function TransactionDetailsModal({
             <div>
               <label>Date & Time</label>
               <div>
-                {new Date(transaction.created_at).toLocaleString("en-PH", {
-                  timeZone: "Asia/Manila",
-                })}
+                {(() => {
+                  const utcDate = new Date(transaction.created_at);
+                  const phTime = new Date(
+                    utcDate.getTime() + 8 * 60 * 60 * 1000
+                  );
+                  return new Intl.DateTimeFormat("en-PH", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  }).format(phTime);
+                })()}
               </div>
             </div>
             <div>
