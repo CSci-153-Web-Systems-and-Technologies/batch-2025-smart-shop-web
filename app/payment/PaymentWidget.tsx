@@ -78,7 +78,7 @@ export default function PaymentWidget() {
       return;
     }
 
-    if (paymentMode === "Cash" && enteredAmount < totalWithTax) {
+    if (paymentMode === "Cash" && enteredAmount < cartTotal) {
       setError("Insufficient payment amount");
       return;
     }
@@ -109,11 +109,13 @@ export default function PaymentWidget() {
         // Clear cart
         sessionStorage.removeItem("pos:cart");
 
-        // Show receipt and redirect
-        alert(
-          `Transaction completed!\nReceipt Number: ${result.receipt_number}\nTotal: ₱${cartTotal.toFixed(2)}\nChange: ₱${change.toFixed(2)}`
-        );
-        router.push("/mainpos");
+        // Redirect to success page with transaction details
+        const params = new URLSearchParams({
+          total: cartTotal.toFixed(2),
+          change: change.toFixed(2),
+          receipt: result.receipt_number || "",
+        });
+        router.push(`/transaction-complete?${params.toString()}`);
       } else {
         setError(result.error || "Failed to create transaction");
       }
