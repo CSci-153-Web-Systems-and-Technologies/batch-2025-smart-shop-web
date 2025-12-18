@@ -53,6 +53,27 @@ export interface TransactionItem {
   product_icon?: string | null;
 }
 
+// Inventory types
+export interface InventoryProduct {
+  id: string;
+  name: string;
+  price: number;
+  category_id: string;
+  stock_quantity: number;
+  reorder_level: number;
+  icon: string | null;
+  sku: string;
+  is_active: boolean;
+  category_name?: string;
+}
+
+export interface InventoryStats {
+  total: number;
+  low: number;
+  out: number;
+  value: number;
+}
+
 /**
  * Fetch all active products with category information
  */
@@ -299,6 +320,196 @@ export async function updateProductStock(
     console.error("Error updating product stock:", error);
     return { error: "An unexpected error occurred" };
   }
+}
+
+// -------- Inventory helpers --------
+
+export async function fetchInventoryProducts(options?: {
+  search?: string;
+  filter?: "all" | "in" | "low" | "out";
+}): Promise<InventoryProduct[]> {
+  const supabase = await createClient();
+  try {
+    let query = supabase
+      .from("products")
+      .select(
+        `id, name, price, category_id, stock_quantity, reorder_level, icon, sku, is_active, categories(name)`
+      )
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+
+    if (options?.search) {
+      query = query.ilike("name", `%${options.search}%`);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("Error fetching inventory products:", error);
+      return [];
+    }
+
+    let products: InventoryProduct[] = (data || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      price: Number(p.price) || 0,
+      category_id: p.category_id,
+      stock_quantity: p.stock_quantity ?? 0,
+      reorder_level: p.reorder_level ?? 0,
+      icon: p.icon,
+      sku: p.sku,
+      is_active: p.is_active,
+      category_name: p.categories?.name || "Uncategorized",
+    }));
+
+    if (options?.filter === "low") {
+      products = products.filter(
+        (p) => p.stock_quantity > 0 && p.stock_quantity < p.reorder_level
+      );
+    }
+    if (options?.filter === "out") {
+      products = products.filter((p) => p.stock_quantity === 0);
+    }
+    if (options?.filter === "in") {
+      products = products.filter(
+        (p) => p.stock_quantity > 0 && p.stock_quantity >= p.reorder_level
+      );
+    }
+
+    return products;
+  } catch (err) {
+    console.error("Unexpected error fetching inventory products:", err);
+    return [];
+  }
+}
+
+export async function fetchInventoryStats(): Promise<InventoryStats> {
+  const supabase = await createClient();
+  try {
+    const { data, error } = await supabase
+      .from("products")
+      .select("price, stock_quantity, reorder_level")
+      .eq("is_active", true);
+
+    if (error) {
+      console.error("Error fetching inventory stats:", error);
+      return { total: 0, low: 0, out: 0, value: 0 };
+    }
+
+    const rows = data || [];
+    const total = rows.length;
+    const low = rows.filter(
+      (r) => (r.stock_quantity ?? 0) > 0 && (r.stock_quantity ?? 0) <= (r.reorder_level ?? 0)
+    ).length;
+    const out = rows.filter((r) => (r.stock_quantity ?? 0) === 0).length;
+    const value = rows.reduce(
+      (sum, r) => sum + (Number(r.price) || 0) * (r.stock_quantity || 0),
+      0
+    );
+
+    return { total, low, out, value };
+  } catch (err) {
+    console.error("Unexpected error fetching inventory stats:", err);
+    return { total: 0, low: 0, out: 0, value: 0 };
+  }
+}
+
+export async function createInventoryProduct(payload: {
+  name: string;
+  category_id: string;
+  stock_quantity: number;
+  reorder_level: number;
+  price: number;
+  icon?: string | null;
+}): Promise<{ success: boolean; id?: string; error?: string }> {
+  const supabase = await createClient();
+  try {
+    const sku = `PRD-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    const { error, data } = await supabase
+      .from("products")
+      .insert({
+        name: payload.name,
+        category_id: payload.category_id,
+        stock_quantity: payload.stock_quantity,
+        reorder_level: payload.reorder_level,
+        price: payload.price,
+        icon: payload.icon || "📦",
+        sku,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("Error creating product:", error);
+      return { success: false, error: error.message };
+    }
+    return { success: true, id: data?.id };
+  } catch (err: any) {
+    console.error("Unexpected error creating product:", err);
+    return { success: false, error: err?.message || "Unexpected error" };
+  }
+}
+
+export async function updateInventoryProduct(
+  id: string,
+  payload: {
+    name: string;
+    category_id: string;
+    stock_quantity: number;
+    reorder_level: number;
+    price: number;
+    icon?: string | null;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  try {
+    const { error } = await supabase
+      .from("products")
+      .update({
+        name: payload.name,
+        category_id: payload.category_id,
+        stock_quantity: payload.stock_quantity,
+        reorder_level: payload.reorder_level,
+        price: payload.price,
+        icon: payload.icon || "📦",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Error updating product:", error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("Unexpected error updating product:", err);
+    return { success: false, error: err?.message || "Unexpected error" };
+  }
+}
+
+export async function softDeleteInventoryProduct(id: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  try {
+    const { error } = await supabase
+      .from("products")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Error deleting product:", error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("Unexpected error deleting product:", err);
+    return { success: false, error: err?.message || "Unexpected error" };
+  }
+}
+
+export async function fetchCategoriesLite(): Promise<Category[]> {
+  return fetchCategories();
 }
 
 /**
