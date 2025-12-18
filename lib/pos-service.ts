@@ -28,6 +28,31 @@ export interface CartItem {
   subtotal: number;
 }
 
+// Transaction history types
+export interface Transaction {
+  id: string;
+  created_at: string;
+  subtotal: number | null;
+  tax_amount: number | null;
+  total_amount: number;
+  payment_method: string;
+  status: string;
+  cashier_name: string | null;
+  receipt_number: string | null;
+}
+
+export interface TransactionItem {
+  id: string;
+  transaction_id: string;
+  product_id: string;
+  product_name: string | null;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+  created_at: string;
+  product_icon?: string | null;
+}
+
 /**
  * Fetch all active products with category information
  */
@@ -159,7 +184,10 @@ export async function createTransaction(
     // Generate unique receipt number
     const receiptNumber = `RCP-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-    // Create transaction
+    // Create transaction with Philippine timezone
+    const now = new Date();
+    const phTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    
     const { data: transaction, error: transactionError } = await supabase
       .from("transactions")
       .insert({
@@ -171,7 +199,7 @@ export async function createTransaction(
         status: "completed",
         cashier_name: cashierName,
         receipt_number: receiptNumber,
-        created_at: new Date().toISOString(),
+        created_at: phTime.toISOString(),
       })
       .select()
       .single();
@@ -274,5 +302,121 @@ export async function updateProductStock(
   } catch (error) {
     console.error("Error updating product stock:", error);
     return { error: "An unexpected error occurred" };
+  }
+}
+
+/**
+ * Fetch transactions list ordered by newest first with optional filters
+ */
+export async function fetchTransactions(options?: {
+  search?: string;
+  paymentMethod?: string | null;
+  from?: string | null; // ISO date
+  to?: string | null;   // ISO date
+}): Promise<Transaction[]> {
+  const supabase = await createClient();
+
+  try {
+    let query = supabase
+      .from("transactions")
+      .select(
+        "id, created_at, subtotal, tax_amount, total_amount, payment_method, status, cashier_name, receipt_number"
+      )
+      .order("created_at", { ascending: false });
+
+    if (options?.paymentMethod && options.paymentMethod !== "All") {
+      query = query.eq("payment_method", options.paymentMethod);
+    }
+
+    if (options?.from) {
+      query = query.gte("created_at", options.from);
+    }
+
+    if (options?.to) {
+      query = query.lte("created_at", options.to);
+    }
+
+    if (options?.search && options.search.trim().length > 0) {
+      const s = options.search.trim();
+      // Try to match by receipt_number or id
+      query = query.or(`receipt_number.ilike.%${s}%,id.eq.${s}`);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("Error fetching transactions:", error);
+      return [];
+    }
+
+    return (data || []) as Transaction[];
+  } catch (err) {
+    console.error("Unexpected error fetching transactions:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch items for a specific transaction (joins product icon)
+ */
+export async function fetchTransactionItems(transactionId: string): Promise<TransactionItem[]> {
+  const supabase = await createClient();
+
+  try {
+    const { data, error } = await supabase
+      .from("transaction_items")
+      .select(
+        `id, transaction_id, product_id, product_name, quantity, unit_price, subtotal, created_at, products:products(icon)`
+      )
+      .eq("transaction_id", transactionId)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error fetching transaction items:", error);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      transaction_id: row.transaction_id,
+      product_id: row.product_id,
+      product_name: row.product_name ?? null,
+      quantity: row.quantity,
+      unit_price: row.unit_price,
+      subtotal: row.subtotal,
+      created_at: row.created_at,
+      product_icon: row.products?.icon ?? null,
+    })) as TransactionItem[];
+  } catch (err) {
+    console.error("Unexpected error fetching transaction items:", err);
+    return [];
+  }
+}
+
+/**
+ * Get total items count (sum of quantity) per transaction for a set of ids
+ */
+export async function getItemsCountForTransactions(transactionIds: string[]) {
+  const supabase = await createClient();
+  if (!transactionIds || transactionIds.length === 0) return {} as Record<string, number>;
+
+  try {
+    const { data, error } = await supabase
+      .from("transaction_items")
+      .select("transaction_id, quantity")
+      .in("transaction_id", transactionIds);
+
+    if (error) {
+      console.error("Error fetching items count:", error);
+      return {} as Record<string, number>;
+    }
+
+    const counts: Record<string, number> = {};
+    (data || []).forEach((row: any) => {
+      counts[row.transaction_id] = (counts[row.transaction_id] || 0) + (row.quantity || 0);
+    });
+    return counts;
+  } catch (err) {
+    console.error("Unexpected error counting items:", err);
+    return {} as Record<string, number>;
   }
 }
