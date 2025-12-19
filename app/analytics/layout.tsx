@@ -20,7 +20,11 @@ export default function AnalyticsLayout({
           <BarChart3 size={24} />
           <span>Sales Analytics</span>
         </div>
-        <div className="analytics-header-right"></div>
+        <div
+          className="analytics-header-right"
+          id="analytics-period-buttons"
+          aria-label="Analytics period filters"
+        ></div>
       </header>
 
       <main className="analytics-content">{children}</main>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Trophy,
   AlertTriangle,
@@ -75,6 +76,7 @@ export default function AnalyticsPage() {
   const [slowItems, setSlowItems] = useState<SlowMovingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [periodTarget, setPeriodTarget] = useState<HTMLElement | null>(null);
 
   const supabase = useRef(createClient());
 
@@ -104,6 +106,11 @@ export default function AnalyticsPage() {
   useEffect(() => {
     loadData(period);
   }, [period, loadData]);
+
+  useEffect(() => {
+    const target = document.getElementById("analytics-period-buttons");
+    setPeriodTarget(target);
+  }, []);
 
   useEffect(() => {
     const channel = supabase.current
@@ -173,23 +180,22 @@ export default function AnalyticsPage() {
 
   return (
     <div className="analytics-page">
-      {/* Period Filter Buttons */}
-      <div className="analytics-header">
-        <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "600" }}>
-          Analytics
-        </h1>
-        <div className="period-buttons">
-          {(["today", "week", "month", "year"] as Period[]).map((p) => (
-            <button
-              key={p}
-              className={`period-btn ${period === p ? "active" : ""}`}
-              onClick={() => setPeriod(p)}
-            >
-              {getPeriodLabel(p)}
-            </button>
-          ))}
-        </div>
-      </div>
+      {periodTarget
+        ? createPortal(
+            <div className="period-buttons">
+              {(["today", "week", "month", "year"] as Period[]).map((p) => (
+                <button
+                  key={p}
+                  className={`period-btn ${period === p ? "active" : ""}`}
+                  onClick={() => setPeriod(p)}
+                >
+                  {getPeriodLabel(p)}
+                </button>
+              ))}
+            </div>,
+            periodTarget
+          )
+        : null}
 
       {/* Metrics Cards */}
       <div className="metrics-grid">
