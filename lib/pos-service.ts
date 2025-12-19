@@ -237,6 +237,9 @@ export async function createTransaction(
       return { error: "Failed to create transaction" };
     }
 
+    // Track stock updates to allow rollback on failure
+    const updatedStocks: Array<{ product_id: string; previous: number; next: number }> = [];
+
     // Insert transaction items and update stock
     for (const item of items) {
       // Insert transaction item
@@ -254,7 +257,33 @@ export async function createTransaction(
 
       if (itemError) {
         console.error("Error inserting transaction item:", itemError);
-        return { error: "Failed to save transaction items" };
+        // Rollback: delete any items inserted for this transaction, revert stock, and remove transaction
+        try {
+          await supabase
+            .from("transaction_items")
+            .delete()
+            .eq("transaction_id", transaction.id)
+            .eq("user_id", userId);
+
+          // Revert stock for previously updated products
+          for (const s of updatedStocks) {
+            await supabase
+              .from("products")
+              .update({ stock_quantity: s.previous })
+              .eq("id", s.product_id)
+              .eq("user_id", userId);
+          }
+
+          // Delete the created transaction record so it won't appear as 0 items
+          await supabase
+            .from("transactions")
+            .delete()
+            .eq("id", transaction.id)
+            .eq("user_id", userId);
+        } catch (rbErr) {
+          console.error("Rollback after item insert failure encountered an error:", rbErr);
+        }
+        return { error: `Failed to save transaction items: ${itemError.message ?? "Unknown error"}` };
       }
 
       // Update product stock - fetch current stock first
@@ -271,7 +300,7 @@ export async function createTransaction(
 
       if (currentProduct) {
         const newStock = Math.max(0, currentProduct.stock_quantity - item.quantity);
-        const { error: updateError } = await supabase
+        const { data: _, error: updateError } = await supabase
           .from("products")
           .update({ stock_quantity: newStock })
           .eq("id", item.product_id);
@@ -280,6 +309,7 @@ export async function createTransaction(
           console.error("Error updating stock:", updateError);
         } else {
           console.log(`Updated stock for product ${item.product_id}: ${currentProduct.stock_quantity} -> ${newStock}`);
+          updatedStocks.push({ product_id: item.product_id, previous: currentProduct.stock_quantity, next: newStock });
         }
       }
     }
@@ -657,5 +687,102 @@ export async function getItemsCountForTransactions(transactionIds: string[]) {
     }
     console.error("Unexpected error counting items:", err);
     return {} as Record<string, number>;
+  }
+}
+
+/**
+ * Delete specific transactions by ids for current user.
+ * Also deletes related transaction_items; returns count deleted.
+ */
+export async function deleteTransactionsByIds(ids: string[]): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const supabase = await createClient();
+  try {
+    const userId = await getCurrentUserId(supabase);
+    if (!ids || ids.length === 0) return { success: true, deleted: 0 };
+
+    // Delete items first (if FK cascade isn't present)
+    const { error: itemsErr } = await supabase
+      .from("transaction_items")
+      .delete()
+      .in("transaction_id", ids)
+      .eq("user_id", userId);
+    if (itemsErr) {
+      console.error("Error deleting transaction items:", itemsErr);
+      return { success: false, error: itemsErr.message };
+    }
+
+    const { data, error } = await supabase
+      .from("transactions")
+      .delete()
+      .in("id", ids)
+      .eq("user_id", userId)
+      .select("id");
+
+    if (error) {
+      console.error("Error deleting transactions:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, deleted: (data || []).length };
+  } catch (err: any) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return { success: false, error: "User not authenticated" };
+    }
+    console.error("Unexpected error deleting transactions:", err);
+    return { success: false, error: err?.message || "Unexpected error" };
+  }
+}
+
+/**
+ * Delete transactions within a date range (inclusive) for current user.
+ */
+export async function deleteTransactionsByDateRange(fromIso: string, toIso: string): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const supabase = await createClient();
+  try {
+    const userId = await getCurrentUserId(supabase);
+
+    // Fetch ids first to delete items and return count
+    let { data: tx, error: fetchErr } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("user_id", userId)
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso);
+
+    if (fetchErr) {
+      console.error("Error fetching transactions to delete:", fetchErr);
+      return { success: false, error: fetchErr.message };
+    }
+
+    const ids = (tx || []).map((r: any) => r.id);
+    if (ids.length === 0) return { success: true, deleted: 0 };
+
+    const itemsDel = await supabase
+      .from("transaction_items")
+      .delete()
+      .in("transaction_id", ids)
+      .eq("user_id", userId);
+    if (itemsDel.error) {
+      console.error("Error deleting items for range:", itemsDel.error);
+      return { success: false, error: itemsDel.error.message };
+    }
+
+    const txDel = await supabase
+      .from("transactions")
+      .delete()
+      .in("id", ids)
+      .eq("user_id", userId)
+      .select("id");
+    if (txDel.error) {
+      console.error("Error deleting transactions for range:", txDel.error);
+      return { success: false, error: txDel.error.message };
+    }
+    return { success: true, deleted: (txDel.data || []).length };
+  } catch (err: any) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return { success: false, error: "User not authenticated" };
+    }
+    console.error("Unexpected error deleting transactions by range:", err);
+    return { success: false, error: err?.message || "Unexpected error" };
   }
 }

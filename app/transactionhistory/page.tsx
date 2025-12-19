@@ -6,6 +6,8 @@ import "./styles.css";
 import {
   fetchTransactions,
   getItemsCountForTransactions,
+  deleteTransactionsByIds,
+  deleteTransactionsByDateRange,
   type Transaction,
 } from "@/lib/pos-service";
 import TransactionDetailsModal from "./components/TransactionDetailsModal";
@@ -30,6 +32,7 @@ export default function TransactionHistoryPage() {
   const [search, setSearch] = React.useState("");
   const [paymentFilter, setPaymentFilter] = React.useState("all");
   const [dateFilter, setDateFilter] = React.useState("all");
+  const [clearPreset, setClearPreset] = React.useState("today");
 
   const [list, setList] = React.useState<Transaction[]>([]);
   const [itemsCount, setItemsCount] = React.useState<Record<string, number>>(
@@ -38,6 +41,8 @@ export default function TransactionHistoryPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [selected, setSelected] = React.useState<Transaction | null>(null);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [busy, setBusy] = React.useState(false);
 
   const supabase = React.useRef(createClient());
 
@@ -130,6 +135,77 @@ export default function TransactionHistoryPage() {
     };
   }, []);
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      if (prev.size === list.length) return new Set();
+      return new Set(list.map((t) => t.id));
+    });
+  }
+
+  async function deleteSelected() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} selected transaction(s)?`)) return;
+    setBusy(true);
+    const ids = Array.from(selectedIds);
+    const res = await deleteTransactionsByIds(ids);
+    if (!res.success) alert(res.error || "Failed to delete");
+    setSelectedIds(new Set());
+    await load();
+    setBusy(false);
+  }
+
+  async function clearByPreset(preset: string) {
+    const now = new Date();
+    let start: Date | null = null;
+    let end: Date | null = null;
+    if (preset === "today") {
+      start = new Date();
+      start.setHours(0, 0, 0, 0);
+      end = new Date();
+      end.setHours(23, 59, 59, 999);
+    } else if (preset === "week") {
+      const d = new Date(now);
+      const day = d.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      start = new Date(d.setDate(d.getDate() + diffToMonday));
+      start.setHours(0, 0, 0, 0);
+      end = new Date(start);
+      end.setDate(start.getDate() + 7);
+      end.setHours(23, 59, 59, 999);
+    } else if (preset === "month") {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      end.setHours(23, 59, 59, 999);
+    } else if (preset === "year") {
+      start = new Date(now.getFullYear(), 0, 1);
+      end = new Date(now.getFullYear(), 11, 31);
+      end.setHours(23, 59, 59, 999);
+    } else if (preset === "all") {
+      start = new Date(2000, 0, 1);
+      end = new Date(2100, 0, 1);
+    }
+    if (!start || !end) return;
+    if (!confirm(`Clear transactions for ${preset}? This cannot be undone.`))
+      return;
+    setBusy(true);
+    const res = await deleteTransactionsByDateRange(
+      start.toISOString(),
+      end.toISOString()
+    );
+    if (!res.success) alert(res.error || "Failed to clear");
+    await load();
+    setBusy(false);
+  }
+
   function exportCsv() {
     const header = [
       "Transaction ID",
@@ -194,15 +270,50 @@ export default function TransactionHistoryPage() {
               <option value="year">This Year</option>
             </select>
           </div>
-          <button className="th-filter-btn" onClick={exportCsv}>
+          <button className="th-filter-btn" onClick={exportCsv} disabled={busy}>
             <Filter size={14} />
             Export
+          </button>
+          <div className="th-select">
+            <span style={{ fontSize: 12, fontWeight: 700 }}>Clear</span>
+            <select
+              value={clearPreset}
+              onChange={(e) => setClearPreset(e.target.value)}
+            >
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="year">This Year</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <button
+            className="th-filter-btn"
+            onClick={() => clearByPreset(clearPreset)}
+            disabled={busy}
+          >
+            Clear
+          </button>
+          <button
+            className="th-filter-btn"
+            onClick={deleteSelected}
+            disabled={busy || selectedIds.size === 0}
+          >
+            Delete Selected
           </button>
         </div>
       </section>
 
       <section className="th-table-card">
         <div className="th-table-headings">
+          <div>
+            <input
+              type="checkbox"
+              aria-label="Select all"
+              onChange={toggleSelectAll}
+              checked={selectedIds.size === list.length && list.length > 0}
+            />
+          </div>
           <div>Transaction ID</div>
           <div>Date & Time</div>
           <div>Items</div>
@@ -231,6 +342,14 @@ export default function TransactionHistoryPage() {
                   : "cash";
               return (
                 <div key={t.id} className="th-row">
+                  <div className="th-cell">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(t.id)}
+                      onChange={() => toggleSelect(t.id)}
+                      aria-label={`Select ${t.receipt_number || t.id}`}
+                    />
+                  </div>
                   <div className="th-cell strong">
                     {t.receipt_number || t.id}
                   </div>
@@ -247,6 +366,24 @@ export default function TransactionHistoryPage() {
                   <div className="th-cell th-actions-col">
                     <button className="th-link" onClick={() => setSelected(t)}>
                       View Details
+                    </button>
+                    <button
+                      className="th-link"
+                      style={{
+                        marginLeft: 8,
+                        background: "rgba(244,63,94,0.12)",
+                        borderColor: "rgba(244,63,94,0.25)",
+                        color: "#ef4444",
+                      }}
+                      onClick={async () => {
+                        if (!confirm("Delete this transaction?")) return;
+                        setBusy(true);
+                        await deleteTransactionsByIds([t.id]);
+                        await load();
+                        setBusy(false);
+                      }}
+                    >
+                      Delete
                     </button>
                   </div>
                 </div>
