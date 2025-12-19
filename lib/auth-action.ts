@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createDefaultCategoriesForUser } from "@/lib/auth";
 import { createClient } from "@/utils/supabase/server";
 
 /**
@@ -122,6 +123,12 @@ export async function signup(formData: FormData) {
 
   if (!data.user) {
     return { error: "Signup failed. Please try again." };
+  }
+
+  try {
+    await createDefaultCategoriesForUser(data.user.id);
+  } catch (seedError) {
+    console.error("Default category creation failed:", seedError);
   }
 
   // Check if email confirmation is required
