@@ -1,10 +1,10 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { CheckCircle } from "lucide-react";
 
-export default function TransactionComplete() {
+function TransactionCompleteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [details, setDetails] = useState({
@@ -60,5 +60,13 @@ export default function TransactionComplete() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function TransactionComplete() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <TransactionCompleteContent />
+    </Suspense>
   );
 }

@@ -1,269 +1,514 @@
 "use client";
 
-import React, { useState } from "react";
-import dynamic from "next/dynamic";
-import { Trophy, AlertTriangle, BarChart3 } from "lucide-react";
-const RevenueChart = dynamic(
-  () =>
-    import("@/app/components/charts/RevenueChart").then((mod) => ({
-      default: mod.RevenueChart,
-    })),
-  {
-    ssr: false,
-  }
-);
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  Trophy,
+  AlertTriangle,
+  TrendingUp,
+  TrendingDown,
+  Loader,
+} from "lucide-react";
+import { createClient } from "@/utils/supabase/client";
+import {
+  fetchAnalyticsMetrics,
+  fetchRevenueChartData,
+  fetchTopSellingProducts,
+  fetchSlowMovingItems,
+  type AnalyticsMetric,
+  type RevenueChartPoint,
+  type TopSellingProduct,
+  type SlowMovingItem,
+} from "@/lib/analytics-service";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
+import "./styles.css";
 
-const topProducts = [
-  {
-    rank: 1,
-    name: "Coca Cola 330ml",
-    qty: 342,
-    sales: "₱855.00",
-    category: "Beverages",
-  },
-  {
-    rank: 2,
-    name: "Bottled Water 1.5L",
-    qty: 289,
-    sales: "₱289.00",
-    category: "Beverages",
-  },
-  {
-    rank: 3,
-    name: "White Bread Loaf",
-    qty: 256,
-    sales: "$768.00",
-    category: "Groceries",
-  },
-  {
-    rank: 4,
-    name: "Chocolate Cookies",
-    qty: 234,
-    sales: "₱643.50",
-    category: "Snacks",
-  },
-  {
-    rank: 5,
-    name: "Fresh Milk 1L",
-    qty: 198,
-    sales: "₱891.00",
-    category: "Beverages",
-  },
-];
+type Period = "today" | "week" | "month" | "year";
 
-const slowItems = [
-  { name: "Instant Coffee Premium", days: 47, stock: 34 },
-  { name: "Strawberry Jam", days: 38, stock: 28 },
-  { name: "Organic Honey 500g", days: 35, stock: 19 },
-  { name: "Imported Pasta", days: 32, stock: 41 },
-  { name: "Gourmet Chocolate Bar", days: 31, stock: 15 },
-];
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-PH").format(Math.round(value));
+}
+
+function calculateGrowth(
+  current: number,
+  previous: number
+): { percentage: number; isPositive: boolean } {
+  if (previous === 0) return { percentage: 0, isPositive: current >= 0 };
+  const pct = ((current - previous) / previous) * 100;
+  return { percentage: pct, isPositive: pct >= 0 };
+}
+
+function getPeriodLabel(period: Period): string {
+  const labels: Record<Period, string> = {
+    today: "Today",
+    week: "This Week",
+    month: "This Month",
+    year: "This Year",
+  };
+  return labels[period];
+}
 
 export default function AnalyticsPage() {
-  const [dateFilter, setDateFilter] = useState("month");
+  const [period, setPeriod] = useState<Period>("month");
+  const [metrics, setMetrics] = useState<{
+    current: AnalyticsMetric;
+    previous: AnalyticsMetric;
+  } | null>(null);
+  const [chartData, setChartData] = useState<RevenueChartPoint[]>([]);
+  const [topProducts, setTopProducts] = useState<TopSellingProduct[]>([]);
+  const [slowItems, setSlowItems] = useState<SlowMovingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [periodTarget, setPeriodTarget] = useState<HTMLElement | null>(null);
 
-  React.useEffect(() => {
-    const handlePeriodChange = (e: Event) => {
-      const period = (e as CustomEvent<string>).detail;
-      setDateFilter(period);
-    };
-    window.addEventListener(
-      "analytics:periodChange",
-      handlePeriodChange as EventListener
-    );
-    return () => {
-      window.removeEventListener(
-        "analytics:periodChange",
-        handlePeriodChange as EventListener
-      );
-    };
+  const supabase = useRef(createClient());
+
+  const loadData = useCallback(async (selectedPeriod: Period) => {
+    setLoading(true);
+    setError("");
+    try {
+      const [metricsData, chartDataResp, topProductsResp, slowItemsResp] =
+        await Promise.all([
+          fetchAnalyticsMetrics(selectedPeriod),
+          fetchRevenueChartData(selectedPeriod),
+          fetchTopSellingProducts(selectedPeriod),
+          fetchSlowMovingItems(),
+        ]);
+
+      setMetrics(metricsData);
+      setChartData(chartDataResp);
+      setTopProducts(topProductsResp);
+      setSlowItems(slowItemsResp);
+    } catch (err) {
+      setError("Failed to load analytics data. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Calculate metrics based on date filter
-  const getMetrics = () => {
-    const baseMetrics = {
-      today: [
-        {
-          label: "TOTAL REVENUE",
-          value: "₱5,234",
-          change: "12.5% from yesterday",
-          color: "blue" as const,
-        },
-        {
-          label: "TRANSACTIONS",
-          value: "287",
-          change: "5.2% from yesterday",
-          color: "teal" as const,
-        },
-        {
-          label: "AVG. SALE",
-          value: "₱18.23",
-          change: "2.1% from yesterday",
-          color: "orange" as const,
-        },
-        {
-          label: "CUSTOMERS",
-          value: "156",
-          change: "8.3% from yesterday",
-          color: "pink" as const,
-        },
-      ],
-      week: [
-        {
-          label: "TOTAL REVENUE",
-          value: "₱32,145",
-          change: "9.8% from last week",
-          color: "blue" as const,
-        },
-        {
-          label: "TRANSACTIONS",
-          value: "892",
-          change: "6.4% from last week",
-          color: "teal" as const,
-        },
-        {
-          label: "AVG. SALE",
-          value: "₱36.05",
-          change: "3.2% from last week",
-          color: "orange" as const,
-        },
-        {
-          label: "CUSTOMERS",
-          value: "623",
-          change: "10.5% from last week",
-          color: "pink" as const,
-        },
-      ],
-      month: [
-        {
-          label: "TOTAL REVENUE",
-          value: "₱24,567",
-          change: "12.5% from last month",
-          color: "blue" as const,
-        },
-        {
-          label: "TRANSACTIONS",
-          value: "1,248",
-          change: "8.3% from last month",
-          color: "teal" as const,
-        },
-        {
-          label: "AVG. SALE",
-          value: "₱19.68",
-          change: "3.8% from last month",
-          color: "orange" as const,
-        },
-        {
-          label: "CUSTOMERS",
-          value: "892",
-          change: "15.2% from last month",
-          color: "pink" as const,
-        },
-      ],
-      year: [
-        {
-          label: "TOTAL REVENUE",
-          value: "₱287,654",
-          change: "18.7% from last year",
-          color: "blue" as const,
-        },
-        {
-          label: "TRANSACTIONS",
-          value: "14,892",
-          change: "22.1% from last year",
-          color: "teal" as const,
-        },
-        {
-          label: "AVG. SALE",
-          value: "₱19.31",
-          change: "5.2% from last year",
-          color: "orange" as const,
-        },
-        {
-          label: "CUSTOMERS",
-          value: "8,234",
-          change: "25.8% from last year",
-          color: "pink" as const,
-        },
-      ],
+  useEffect(() => {
+    loadData(period);
+  }, [period, loadData]);
+
+  useEffect(() => {
+    const target = document.getElementById("analytics-period-buttons");
+    setPeriodTarget(target);
+  }, []);
+
+  useEffect(() => {
+    const channel = supabase.current
+      .channel("analytics-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "transactions" },
+        () => loadData(period)
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "transaction_items" },
+        () => loadData(period)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.current.removeChannel(channel);
     };
+  }, [loadData, period]);
+
+  if (error && !loading) {
     return (
-      baseMetrics[dateFilter as keyof typeof baseMetrics] || baseMetrics.month
+      <div style={{ padding: "2rem", textAlign: "center", color: "#d32f2f" }}>
+        <p>{error}</p>
+        <button
+          onClick={() => loadData(period)}
+          style={{
+            marginTop: "1rem",
+            padding: "0.5rem 1rem",
+            background: "#6f5ce9",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+          }}
+        >
+          Retry
+        </button>
+      </div>
     );
+  }
+
+  const growth = {
+    revenue: metrics
+      ? calculateGrowth(
+          metrics.current.total_revenue,
+          metrics.previous.total_revenue
+        )
+      : { percentage: 0, isPositive: false },
+    transactions: metrics
+      ? calculateGrowth(
+          metrics.current.transaction_count,
+          metrics.previous.transaction_count
+        )
+      : { percentage: 0, isPositive: false },
+    avgSale: metrics
+      ? calculateGrowth(metrics.current.avg_sale, metrics.previous.avg_sale)
+      : { percentage: 0, isPositive: false },
+    customers: metrics
+      ? calculateGrowth(
+          metrics.current.unique_customers,
+          metrics.previous.unique_customers
+        )
+      : { percentage: 0, isPositive: false },
   };
 
-  const metrics = getMetrics();
   return (
-    <div>
+    <div className="analytics-page">
+      {periodTarget
+        ? createPortal(
+            <div className="period-buttons">
+              {(["today", "week", "month", "year"] as Period[]).map((p) => (
+                <button
+                  key={p}
+                  className={`period-btn ${period === p ? "active" : ""}`}
+                  onClick={() => setPeriod(p)}
+                >
+                  {getPeriodLabel(p)}
+                </button>
+              ))}
+            </div>,
+            periodTarget
+          )
+        : null}
+
       {/* Metrics Cards */}
       <div className="metrics-grid">
-        {metrics.map(
-          (m: {
-            label: string;
-            value: string;
-            change: string;
-            color: string;
-          }) => (
-            <div key={m.label} className={`metric-card metric-${m.color}`}>
-              <div className="metric-label">{m.label}</div>
-              <div className="metric-value">{m.value}</div>
-              <div className="metric-change">{m.change}</div>
+        {/* Total Revenue */}
+        <div className="metric-card metric-blue">
+          <div className="metric-label">TOTAL REVENUE</div>
+          <div className="metric-value">
+            {loading ? (
+              <Loader size={20} className="animate-spin" />
+            ) : (
+              formatCurrency(metrics?.current.total_revenue || 0)
+            )}
+          </div>
+          {metrics && (
+            <div className="metric-change">
+              <span
+                style={{
+                  color: growth.revenue.isPositive ? "#4caf50" : "#f44336",
+                }}
+              >
+                {growth.revenue.isPositive ? "+" : ""}
+                {growth.revenue.percentage.toFixed(1)}% from last{" "}
+                {period === "today"
+                  ? "day"
+                  : period === "week"
+                    ? "week"
+                    : period === "month"
+                      ? "month"
+                      : "year"}
+              </span>
             </div>
-          )
+          )}
+        </div>
+
+        {/* Transactions */}
+        <div className="metric-card metric-teal">
+          <div className="metric-label">TRANSACTIONS</div>
+          <div className="metric-value">
+            {loading ? (
+              <Loader size={20} className="animate-spin" />
+            ) : (
+              formatNumber(metrics?.current.transaction_count || 0)
+            )}
+          </div>
+          {metrics && (
+            <div className="metric-change">
+              <span
+                style={{
+                  color: growth.transactions.isPositive ? "#4caf50" : "#f44336",
+                }}
+              >
+                {growth.transactions.isPositive ? "+" : ""}
+                {growth.transactions.percentage.toFixed(1)}% from last{" "}
+                {period === "today"
+                  ? "day"
+                  : period === "week"
+                    ? "week"
+                    : period === "month"
+                      ? "month"
+                      : "year"}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Avg Sale */}
+        <div className="metric-card metric-orange">
+          <div className="metric-label">AVG. SALE</div>
+          <div className="metric-value">
+            {loading ? (
+              <Loader size={20} className="animate-spin" />
+            ) : (
+              formatCurrency(metrics?.current.avg_sale || 0)
+            )}
+          </div>
+          {metrics && (
+            <div className="metric-change">
+              <span
+                style={{
+                  color: growth.avgSale.isPositive ? "#4caf50" : "#f44336",
+                }}
+              >
+                {growth.avgSale.isPositive ? "+" : ""}
+                {growth.avgSale.percentage.toFixed(1)}% from last{" "}
+                {period === "today"
+                  ? "day"
+                  : period === "week"
+                    ? "week"
+                    : period === "month"
+                      ? "month"
+                      : "year"}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Customers */}
+        <div className="metric-card metric-pink">
+          <div className="metric-label">CUSTOMERS</div>
+          <div className="metric-value">
+            {loading ? (
+              <Loader size={20} className="animate-spin" />
+            ) : (
+              formatNumber(metrics?.current.unique_customers || 0)
+            )}
+          </div>
+          {metrics && (
+            <div className="metric-change">
+              <span
+                style={{
+                  color: growth.customers.isPositive ? "#4caf50" : "#f44336",
+                }}
+              >
+                {growth.customers.isPositive ? "+" : ""}
+                {growth.customers.percentage.toFixed(1)}% from last{" "}
+                {period === "today"
+                  ? "day"
+                  : period === "week"
+                    ? "week"
+                    : period === "month"
+                      ? "month"
+                      : "year"}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Revenue Chart */}
+      <div className="chart-container">
+        <div className="chart-header">
+          <h2>Revenue Overview</h2>
+          {chartData.length > 1 && (
+            <div className="chart-trend">
+              {(chartData[chartData.length - 1].revenue -
+                chartData[0].revenue) /
+                (chartData[0].revenue || 1) >
+              0 ? (
+                <TrendingUp size={16} color="#4caf50" />
+              ) : (
+                <TrendingDown size={16} color="#f44336" />
+              )}
+              <span>
+                Trending{" "}
+                {(chartData[chartData.length - 1].revenue -
+                  chartData[0].revenue) /
+                  (chartData[0].revenue || 1) >
+                0
+                  ? "up"
+                  : "down"}{" "}
+                by{" "}
+                {Math.abs(
+                  ((chartData[chartData.length - 1].revenue -
+                    chartData[0].revenue) /
+                    (chartData[0].revenue || 1)) *
+                    100
+                ).toFixed(1)}
+                %
+              </span>
+            </div>
+          )}
+        </div>
+        {loading ? (
+          <div
+            style={{
+              height: "400px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Loader className="animate-spin" />
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={400}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#8B9CFF" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="#8B9CFF" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis
+                dataKey="period"
+                stroke="#999"
+                style={{ fontSize: "12px" }}
+              />
+              <YAxis stroke="#999" style={{ fontSize: "12px" }} />
+              <Tooltip
+                contentStyle={{
+                  background: "#fff",
+                  border: "1px solid #ccc",
+                  borderRadius: "4px",
+                }}
+                formatter={(value: any) => `₱${Number(value || 0).toFixed(0)}`}
+              />
+              <Area
+                type="monotone"
+                dataKey="revenue"
+                stroke="#8B9CFF"
+                fillOpacity={1}
+                fill="url(#colorRevenue)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         )}
       </div>
 
-      {/* Revenue Overview */}
-      <RevenueChart />
-
       {/* Top Products & Slow Items */}
       <div className="analytics-grid">
-        <section className="card top-products">
+        {/* Top Products */}
+        <div className="card top-products-card">
           <div className="card-header">
-            <Trophy className="inline mr-2" size={20} /> Top Selling Products
+            <Trophy size={20} /> Top Selling Products
           </div>
-          <div className="card-sub">Best performers this month</div>
+          <div className="card-subtitle">
+            Best performers {getPeriodLabel(period).toLowerCase()}
+          </div>
 
-          <ul className="top-list">
-            {topProducts.map((p) => (
-              <li key={p.rank} className="top-item">
-                <div className="rank">{p.rank}</div>
-                <div className="info">
-                  <div className="name">{p.name}</div>
-                  <div className="muted">{p.category}</div>
-                </div>
-                <div className="meta">
-                  <div className="qty">{p.qty} sold</div>
-                  <div className="sales">{p.sales}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+          {loading ? (
+            <div
+              style={{
+                padding: "2rem",
+                textAlign: "center",
+                color: "#999",
+              }}
+            >
+              <Loader className="animate-spin" />
+            </div>
+          ) : topProducts.length === 0 ? (
+            <div
+              style={{
+                padding: "2rem",
+                textAlign: "center",
+                color: "#999",
+              }}
+            >
+              No sales data available
+            </div>
+          ) : (
+            <ul className="top-list">
+              {topProducts.map((product, idx) => (
+                <li key={product.product_name} className="top-item">
+                  <div className="rank-badge">{idx + 1}</div>
+                  <div className="product-info">
+                    <div className="product-name">{product.product_name}</div>
+                    <div className="product-category">
+                      {product.category_name}
+                    </div>
+                  </div>
+                  <div className="product-stats">
+                    <div className="qty-sold">
+                      {formatNumber(product.total_sold)} sold
+                    </div>
+                    <div className="revenue-amount">
+                      {formatCurrency(product.total_revenue)}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-        <section className="card slow-items">
+        {/* Slow Items */}
+        <div className="card slow-items-card">
           <div className="card-header">
-            <AlertTriangle className="inline mr-2" size={20} /> Slow Moving
-            Items
+            <AlertTriangle size={20} /> Slow Moving Items
           </div>
-          <div className="card-sub">No sales in the last 30 days</div>
+          <div className="card-subtitle">No sales in the last 30 days</div>
 
-          <ul className="slow-list">
-            {slowItems.map((s) => (
-              <li key={s.name} className="slow-item">
-                <div className="slow-left">
-                  <div className="slow-name">{s.name}</div>
-                  <div className="muted">{s.days} days since last sale</div>
-                </div>
-                <div className="slow-right">
-                  {s.stock} units
-                  <br />
-                  <span className="muted">in stock</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+          {loading ? (
+            <div
+              style={{
+                padding: "2rem",
+                textAlign: "center",
+                color: "#999",
+              }}
+            >
+              <Loader className="animate-spin" />
+            </div>
+          ) : slowItems.length === 0 ? (
+            <div
+              style={{
+                padding: "2rem",
+                textAlign: "center",
+                color: "#999",
+              }}
+            >
+              No slow moving items
+            </div>
+          ) : (
+            <ul className="slow-list">
+              {slowItems.map((item) => (
+                <li key={item.product_name} className="slow-item">
+                  <div className="slow-left">
+                    <div className="slow-name">{item.product_name}</div>
+                    <div className="slow-days">
+                      {item.days_without_sales} days since last sale
+                    </div>
+                  </div>
+                  <div className="slow-right">
+                    <div className="stock-amount">
+                      {formatNumber(item.stock_quantity)} units
+                    </div>
+                    <div className="stock-label">in stock</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
