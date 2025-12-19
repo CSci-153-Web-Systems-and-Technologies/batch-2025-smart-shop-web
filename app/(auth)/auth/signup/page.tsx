@@ -1,9 +1,8 @@
 "use client";
-
+import "./styles.css";
 import React, { useState } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, User } from "lucide-react";
-import "./styles.css";
 
 export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
