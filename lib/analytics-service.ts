@@ -1,5 +1,6 @@
 "use server";
 
+import { getCurrentUserId } from "@/lib/auth";
 import { createClient } from "@/utils/supabase/server";
 
 export interface AnalyticsMetric {
@@ -87,7 +88,23 @@ export async function fetchAnalyticsMetrics(
 }> {
   const supabase = await createClient();
 
+  const empty = {
+    current: {
+      total_revenue: 0,
+      transaction_count: 0,
+      avg_sale: 0,
+      unique_customers: 0,
+    },
+    previous: {
+      total_revenue: 0,
+      transaction_count: 0,
+      avg_sale: 0,
+      unique_customers: 0,
+    },
+  };
+
   try {
+    const userId = await getCurrentUserId(supabase);
     const currentRange = getDateRange(period, 0);
     const previousRange = getDateRange(period, 1);
 
@@ -96,31 +113,20 @@ export async function fetchAnalyticsMetrics(
       .from("transactions")
       .select("id, user_id, total_amount")
       .gte("created_at", currentRange.start)
-      .lte("created_at", currentRange.end);
+      .lte("created_at", currentRange.end)
+      .eq("user_id", userId);
 
     // Fetch previous period data
     const { data: previousData, error: previousError } = await supabase
       .from("transactions")
       .select("id, user_id, total_amount")
       .gte("created_at", previousRange.start)
-      .lte("created_at", previousRange.end);
+      .lte("created_at", previousRange.end)
+      .eq("user_id", userId);
 
     if (currentError || previousError) {
       console.error("Error fetching metrics:", currentError || previousError);
-      return {
-        current: {
-          total_revenue: 0,
-          transaction_count: 0,
-          avg_sale: 0,
-          unique_customers: 0,
-        },
-        previous: {
-          total_revenue: 0,
-          transaction_count: 0,
-          avg_sale: 0,
-          unique_customers: 0,
-        },
-      };
+      return empty;
     }
 
     const calculateMetrics = (transactions: any[]): AnalyticsMetric => {
@@ -151,21 +157,11 @@ export async function fetchAnalyticsMetrics(
       previous: calculateMetrics(previousData || []),
     };
   } catch (err) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return empty;
+    }
     console.error("Unexpected error fetching metrics:", err);
-    return {
-      current: {
-        total_revenue: 0,
-        transaction_count: 0,
-        avg_sale: 0,
-        unique_customers: 0,
-      },
-      previous: {
-        total_revenue: 0,
-        transaction_count: 0,
-        avg_sale: 0,
-        unique_customers: 0,
-      },
-    };
+    return empty;
   }
 }
 
@@ -178,6 +174,7 @@ export async function fetchRevenueChartData(
   const supabase = await createClient();
 
   try {
+    const userId = await getCurrentUserId(supabase);
     const { start, end } = getDateRange(period, 0);
 
     const { data, error } = await supabase
@@ -185,6 +182,7 @@ export async function fetchRevenueChartData(
       .select("created_at, total_amount")
       .gte("created_at", start)
       .lte("created_at", end)
+      .eq("user_id", userId)
       .order("created_at");
 
     if (error) {
@@ -245,6 +243,9 @@ export async function fetchRevenueChartData(
 
     return result;
   } catch (err) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return [];
+    }
     console.error("Unexpected error fetching revenue chart data:", err);
     return [];
   }
@@ -259,6 +260,7 @@ export async function fetchTopSellingProducts(
   const supabase = await createClient();
 
   try {
+    const userId = await getCurrentUserId(supabase);
     const { start, end } = getDateRange(period, 0);
 
     const { data, error } = await supabase
@@ -272,7 +274,8 @@ export async function fetchTopSellingProducts(
         transaction_id,
         transactions(created_at)
       `
-      );
+      )
+      .eq("user_id", userId);
 
     if (error) {
       console.error("Error fetching transaction items:", error);
@@ -305,7 +308,8 @@ export async function fetchTopSellingProducts(
           category_id,
           categories(name)
         `
-        );
+        )
+        .eq("user_id", userId);
 
       if (!productsError && products) {
         productMap = Object.fromEntries(
@@ -358,6 +362,9 @@ export async function fetchTopSellingProducts(
 
     return sorted;
   } catch (err) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return [];
+    }
     console.error("Unexpected error fetching top selling products:", err);
     return [];
   }
@@ -370,10 +377,12 @@ export async function fetchSlowMovingItems(): Promise<SlowMovingItem[]> {
   const supabase = await createClient();
 
   try {
+    const userId = await getCurrentUserId(supabase);
     // Get all products
     const { data: products, error: productsError } = await supabase
       .from("products")
       .select("id, name, stock_quantity, updated_at")
+      .eq("user_id", userId)
       .eq("is_active", true);
 
     if (productsError) {
@@ -388,7 +397,8 @@ export async function fetchSlowMovingItems(): Promise<SlowMovingItem[]> {
     const { data: recentSales, error: salesError } = await supabase
       .from("transaction_items")
       .select("product_id")
-      .gte("created_at", thirtyDaysAgo.toISOString());
+      .gte("created_at", thirtyDaysAgo.toISOString())
+      .eq("user_id", userId);
 
     if (salesError) {
       console.error("Error fetching recent sales:", salesError);
@@ -420,6 +430,9 @@ export async function fetchSlowMovingItems(): Promise<SlowMovingItem[]> {
 
     return slowMoving;
   } catch (err) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return [];
+    }
     console.error("Unexpected error fetching slow moving items:", err);
     return [];
   }

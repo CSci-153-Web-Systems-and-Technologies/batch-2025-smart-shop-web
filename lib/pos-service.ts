@@ -1,5 +1,6 @@
 "use server";
 
+import { createDefaultCategoriesForUser, getCurrentUserId } from "@/lib/auth";
 import { createClient } from "@/utils/supabase/server";
 
 // Types for POS
@@ -81,6 +82,7 @@ export async function fetchProducts(): Promise<Product[]> {
   const supabase = await createClient();
 
   try {
+    const userId = await getCurrentUserId(supabase);
     const { data, error } = await supabase
       .from("products")
       .select(
@@ -97,6 +99,7 @@ export async function fetchProducts(): Promise<Product[]> {
       `
       )
       .eq("is_active", true)
+      .eq("user_id", userId)
       .order("name");
 
     if (error) {
@@ -116,6 +119,9 @@ export async function fetchProducts(): Promise<Product[]> {
       category_name: product.categories?.name || "Uncategorized",
     }));
   } catch (error) {
+    if ((error as Error)?.message === "User not authenticated") {
+      return [];
+    }
     console.error("Unexpected error fetching products:", error);
     return [];
   }
@@ -128,6 +134,7 @@ export async function fetchCategories(): Promise<Category[]> {
   const supabase = await createClient();
 
   try {
+    const userId = await getCurrentUserId(supabase);
     const { data, error } = await supabase
       .from("categories")
       .select("id, name")
@@ -137,9 +144,20 @@ export async function fetchCategories(): Promise<Category[]> {
       console.error("Error fetching categories:", error);
       return [];
     }
+    if (!data || data.length === 0) {
+      await createDefaultCategoriesForUser(userId);
+      const { data: seeded } = await supabase
+        .from("categories")
+        .select("id, name")
+        .order("name");
+      return seeded || [];
+    }
 
-    return data || [];
+    return data;
   } catch (error) {
+    if ((error as Error)?.message === "User not authenticated") {
+      return [];
+    }
     console.error("Unexpected error fetching categories:", error);
     return [];
   }
@@ -184,20 +202,13 @@ export async function createTransaction(
   const supabase = await createClient();
 
   try {
-    // Get current user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return { error: "User not authenticated" };
-    }
+    const userId = await getCurrentUserId(supabase);
 
     // Get user profile for cashier name
     const { data: profile } = await supabase
       .from("profiles")
       .select("full_name")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single();
 
     const cashierName = profile?.full_name || "Unknown";
@@ -209,7 +220,7 @@ export async function createTransaction(
     const { data: transaction, error: transactionError } = await supabase
       .from("transactions")
       .insert({
-        user_id: user.id,
+        user_id: userId,
         subtotal,
         tax_amount: taxAmount,
         total_amount: totalAmount,
@@ -233,6 +244,7 @@ export async function createTransaction(
         .from("transaction_items")
         .insert({
           transaction_id: transaction.id,
+          user_id: userId,
           product_id: item.product_id,
           product_name: item.product_name,
           quantity: item.quantity,
@@ -278,6 +290,9 @@ export async function createTransaction(
       receipt_number: receiptNumber,
     };
   } catch (error) {
+    if ((error as Error)?.message === "User not authenticated") {
+      return { error: "User not authenticated" };
+    }
     console.error("Error creating transaction:", error);
     return { error: "An unexpected error occurred" };
   }
@@ -423,10 +438,12 @@ export async function createInventoryProduct(payload: {
 }): Promise<{ success: boolean; id?: string; error?: string }> {
   const supabase = await createClient();
   try {
+    const userId = await getCurrentUserId(supabase);
     const sku = `PRD-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
     const { error, data } = await supabase
       .from("products")
       .insert({
+        user_id: userId,
         name: payload.name,
         category_id: payload.category_id,
         stock_quantity: payload.stock_quantity,
@@ -447,6 +464,9 @@ export async function createInventoryProduct(payload: {
     }
     return { success: true, id: data?.id };
   } catch (err: any) {
+    if (err?.message === "User not authenticated") {
+      return { success: false, error: "User not authenticated" };
+    }
     console.error("Unexpected error creating product:", err);
     return { success: false, error: err?.message || "Unexpected error" };
   }
@@ -524,11 +544,13 @@ export async function fetchTransactions(options?: {
   const supabase = await createClient();
 
   try {
+    const userId = await getCurrentUserId(supabase);
     let query = supabase
       .from("transactions")
       .select(
         "id, created_at, subtotal, tax_amount, total_amount, payment_method, status, cashier_name, receipt_number"
       )
+      .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
     if (options?.paymentMethod && options.paymentMethod !== "All") {
@@ -557,6 +579,9 @@ export async function fetchTransactions(options?: {
 
     return (data || []) as Transaction[];
   } catch (err) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return [];
+    }
     console.error("Unexpected error fetching transactions:", err);
     return [];
   }
@@ -569,12 +594,14 @@ export async function fetchTransactionItems(transactionId: string): Promise<Tran
   const supabase = await createClient();
 
   try {
+    const userId = await getCurrentUserId(supabase);
     const { data, error } = await supabase
       .from("transaction_items")
       .select(
         `id, transaction_id, product_id, product_name, quantity, unit_price, subtotal, created_at, products:products(icon)`
       )
       .eq("transaction_id", transactionId)
+      .eq("user_id", userId)
       .order("created_at", { ascending: true });
 
     if (error) {
@@ -607,10 +634,12 @@ export async function getItemsCountForTransactions(transactionIds: string[]) {
   if (!transactionIds || transactionIds.length === 0) return {} as Record<string, number>;
 
   try {
+    const userId = await getCurrentUserId(supabase);
     const { data, error } = await supabase
       .from("transaction_items")
       .select("transaction_id, quantity")
-      .in("transaction_id", transactionIds);
+      .in("transaction_id", transactionIds)
+      .eq("user_id", userId);
 
     if (error) {
       console.error("Error fetching items count:", error);
@@ -623,6 +652,9 @@ export async function getItemsCountForTransactions(transactionIds: string[]) {
     });
     return counts;
   } catch (err) {
+    if ((err as Error)?.message === "User not authenticated") {
+      return {} as Record<string, number>;
+    }
     console.error("Unexpected error counting items:", err);
     return {} as Record<string, number>;
   }
