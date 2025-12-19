@@ -1,22 +1,38 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import "./modal.css";
+import { createInventoryProduct, type Category } from "@/lib/pos-service";
 
 interface AddProductModalProps {
   isOpen: boolean;
   onClose: () => void;
+  categories: Category[];
+  onAdded?: () => void;
 }
 
-export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
+export function AddProductModal({
+  isOpen,
+  onClose,
+  categories,
+  onAdded,
+}: AddProductModalProps) {
   const [formData, setFormData] = useState({
     productName: "",
-    category: "Groceries",
+    category: "",
     initialStock: "",
     reorderLevel: "",
     price: "",
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (categories.length && !formData.category) {
+      setFormData((prev) => ({ ...prev, category: categories[0].id }));
+    }
+  }, [categories, formData.category]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -25,17 +41,62 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log("Adding product:", formData);
+  const resetForm = () => {
     setFormData({
       productName: "",
-      category: "Groceries",
+      category: categories[0]?.id || "",
       initialStock: "",
       reorderLevel: "",
       price: "",
     });
-    onClose();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    const stock = parseInt(formData.initialStock, 10);
+    const reorder = parseInt(formData.reorderLevel, 10);
+    const price = parseFloat(formData.price);
+    const categoryId = formData.category || categories[0]?.id || "";
+
+    if (!formData.productName.trim()) {
+      setError("Product name is required.");
+      return;
+    }
+    if (!categoryId) {
+      setError("Please select a category.");
+      return;
+    }
+    if ([stock, reorder, price].some((n) => Number.isNaN(n) || n < 0)) {
+      setError("Please enter valid non-negative numbers.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await createInventoryProduct({
+        name: formData.productName.trim(),
+        category_id: categoryId,
+        stock_quantity: stock,
+        reorder_level: reorder,
+        price,
+      });
+
+      if (!result.success) {
+        setError(result.error || "Failed to add product.");
+        return;
+      }
+
+      resetForm();
+      onAdded?.();
+      onClose();
+    } catch (err: any) {
+      console.error("Error adding product", err);
+      setError(err?.message || "Failed to add product.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -70,9 +131,11 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
               value={formData.category}
               onChange={handleChange}
             >
-              <option>Groceries</option>
-              <option>Beverages</option>
-              <option>Snacks</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -134,12 +197,14 @@ export function AddProductModal({ isOpen, onClose }: AddProductModalProps) {
             </div>
           </div>
 
+          {error && <div className="form-error">{error}</div>}
+
           <div className="modal-footer">
             <button type="button" className="btn-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-submit">
-              Add Product
+            <button type="submit" className="btn-submit" disabled={submitting}>
+              {submitting ? "Saving..." : "Add Product"}
             </button>
           </div>
         </form>
