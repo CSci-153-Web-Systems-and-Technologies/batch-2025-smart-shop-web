@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, User } from "lucide-react";
-import { signup } from "@/lib/auth-action";
 import "./styles.css";
 
 export default function SignupPage() {
@@ -18,6 +17,22 @@ export default function SignupPage() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  async function submitSignup() {
+    const res = await fetch("/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      throw new Error(data.error || "Signup failed");
+    }
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -55,15 +70,13 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const formDataObj = new FormData();
-      formDataObj.append("first-name", formData.firstName);
-      formDataObj.append("last-name", formData.lastName);
-      formDataObj.append("email", formData.email);
-      formDataObj.append("password", formData.password);
-
-      await signup(formDataObj);
+      await submitSignup();
+      window.location.href = "/mainpos";
     } catch (err) {
-      setError("An error occurred during signup. Please try again.");
+      setError(
+        (err as Error)?.message ||
+          "An error occurred during signup. Please try again."
+      );
       console.error(err);
     } finally {
       setLoading(false);
