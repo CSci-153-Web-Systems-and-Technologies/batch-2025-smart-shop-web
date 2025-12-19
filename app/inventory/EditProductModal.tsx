@@ -1,34 +1,56 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import "./modal.css";
+import {
+  updateInventoryProduct,
+  type Category,
+  type InventoryProduct,
+} from "@/lib/pos-service";
 
 interface EditProductModalProps {
   isOpen: boolean;
   onClose: () => void;
-  product?: {
-    id: number;
-    name: string;
-    category: string;
-    stock: number;
-    reorder: number;
-    price: number;
-  };
+  product?: InventoryProduct | null;
+  categories: Category[];
+  onUpdated?: () => void;
 }
 
 export function EditProductModal({
   isOpen,
   onClose,
   product,
+  categories,
+  onUpdated,
 }: EditProductModalProps) {
   const [formData, setFormData] = useState({
     productName: product?.name || "",
-    category: product?.category || "Groceries",
-    initialStock: product?.stock.toString() || "",
-    reorderLevel: product?.reorder.toString() || "",
-    price: product?.price.toString() || "",
+    category: product?.category_id || "",
+    initialStock: product?.stock_quantity?.toString() || "",
+    reorderLevel: product?.reorder_level?.toString() || "",
+    price: product?.price?.toString() || "",
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (product) {
+      setFormData({
+        productName: product.name,
+        category: product.category_id,
+        initialStock: product.stock_quantity?.toString() || "",
+        reorderLevel: product.reorder_level?.toString() || "",
+        price: product.price?.toString() || "",
+      });
+    }
+  }, [product]);
+
+  useEffect(() => {
+    if (categories.length && !formData.category) {
+      setFormData((prev) => ({ ...prev, category: categories[0].id }));
+    }
+  }, [categories, formData.category]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -37,10 +59,52 @@ export function EditProductModal({
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Updating product:", formData);
-    onClose();
+    if (!product) return;
+    setError("");
+
+    const stock = parseInt(formData.initialStock, 10);
+    const reorder = parseInt(formData.reorderLevel, 10);
+    const price = parseFloat(formData.price);
+    const categoryId = formData.category || categories[0]?.id || "";
+
+    if (!formData.productName.trim()) {
+      setError("Product name is required.");
+      return;
+    }
+    if (!categoryId) {
+      setError("Please select a category.");
+      return;
+    }
+    if ([stock, reorder, price].some((n) => Number.isNaN(n) || n < 0)) {
+      setError("Please enter valid non-negative numbers.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await updateInventoryProduct(product.id, {
+        name: formData.productName.trim(),
+        category_id: categoryId,
+        stock_quantity: stock,
+        reorder_level: reorder,
+        price,
+      });
+
+      if (!result.success) {
+        setError(result.error || "Failed to update product.");
+        return;
+      }
+
+      onUpdated?.();
+      onClose();
+    } catch (err: any) {
+      console.error("Error updating product", err);
+      setError(err?.message || "Failed to update product.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!isOpen || !product) return null;
@@ -75,9 +139,11 @@ export function EditProductModal({
               value={formData.category}
               onChange={handleChange}
             >
-              <option>Groceries</option>
-              <option>Beverages</option>
-              <option>Snacks</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -139,12 +205,18 @@ export function EditProductModal({
             </div>
           </div>
 
+          {error && <div className="form-error">{error}</div>}
+
           <div className="modal-footer">
             <button type="button" className="btn-cancel" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn-submit btn-update">
-              Update Product
+            <button
+              type="submit"
+              className="btn-submit btn-update"
+              disabled={submitting}
+            >
+              {submitting ? "Saving..." : "Update Product"}
             </button>
           </div>
         </form>

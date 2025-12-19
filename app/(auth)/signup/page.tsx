@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, User } from "lucide-react";
+import { signup } from "@/lib/auth-action";
 import "./styles.css";
 
 export default function SignupPage() {
@@ -54,29 +55,25 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      // Create FormData object
+      // Create FormData object for server action
       const formDataObj = new FormData();
-      formDataObj.append("first-name", formData.firstName);
-      formDataObj.append("last-name", formData.lastName);
+      formDataObj.append("firstName", formData.firstName);
+      formDataObj.append("lastName", formData.lastName);
       formDataObj.append("email", formData.email);
       formDataObj.append("password", formData.password);
 
       // Call signup server action
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        body: formDataObj,
-      });
+      const result = await signup(formDataObj);
 
-      if (!response.ok) {
-        setError("An error occurred during signup. Please try again.");
-        return;
+      // If there's an error, display it
+      if (result?.error) {
+        setError(result.error);
+        setLoading(false);
       }
-
-      // Success - redirect will be handled by server
+      // If successful, the server action will redirect
     } catch (err) {
       setError("An error occurred during signup. Please try again.");
       console.error(err);
-    } finally {
       setLoading(false);
     }
   };
